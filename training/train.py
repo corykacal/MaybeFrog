@@ -19,12 +19,13 @@ data_transforms = {
     'train': transforms.Compose([
         transforms.RandomRotation(3),
         transforms.RandomHorizontalFlip(),
-        transforms.RandomResizedCrop(224, scale=(0.96, 1.0), ratio=(0.95, 1.05)),
+        transforms.RandomResizedCrop(96, scale=(0.90, 1.0), ratio=(0.90, 1.05)),
+        transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.4),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
     'val': transforms.Compose([
-        transforms.Resize([224,224]),
+        transforms.Resize([96,96]),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
@@ -35,7 +36,7 @@ SUBMISSION_FILE = 'submission.csv'
 image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x), data_transforms[x])
                     for x in ['train', 'val']}
 dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x],
-                    batch_size=4, shuffle=True, num_workers=4)
+                    batch_size=4, shuffle=True, num_workers=1)
                     for x in ['train', 'val']}
 dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
 class_names = image_datasets['train'].classes
@@ -65,9 +66,7 @@ imshow(sample_train_images, title=classes)
 
 def train_model(model, criterion, optimizer, scheduler, num_epochs=2):
     since = time.time()
-    torch.save(model, "model")
 
-    best_model_wts = copy.deepcopy(model.state_dict())
     best_loss = math.inf
     best_acc = 0.
 
@@ -127,7 +126,6 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=2):
                 print(f'New record loss: {epoch_loss}, previous record loss: {best_loss}')
                 best_loss = epoch_loss
                 best_acc = epoch_acc
-                best_model_wts = copy.deepcopy(model.state_dict())
 
         print()
 
@@ -137,27 +135,26 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=2):
     print('Best val Acc: {:.4f} Best val loss: {:.4f}'.format(best_acc, best_loss))
 
     # load best model weights
-    model.load_state_dict(best_model_wts)
-    return model, best_loss, best_acc
+    return best_loss, best_acc
 
 
 
-model_conv = torchvision.models.resnet50(pretrained=True)
+model_conv = torchvision.models.resnet34()
 
 for param in model_conv.parameters():
     param.requires_grad = False
 # Parameters of newly constructed modules have requires_grad=True by default
 num_ftrs = model_conv.fc.in_features
-model_conv.fc = nn.Linear(num_ftrs, 2)
+model_conv.fc = nn.Linear(num_ftrs, 4)
 model_conv = model_conv.to(device)
 criterion = nn.CrossEntropyLoss()
 # Observe that only parameters of final layer are being optimized
-optimizer_conv = optim.SGD(model_conv.fc.parameters(), lr=0.01, momentum=0.9)
+optimizer_conv = optim.SGD(model_conv.fc.parameters(), lr=0.008, momentum=0.9)
 # Decay LR by a factor of 0.1 every 7 epochs
-exp_lr_scheduler = lr_scheduler.StepLR(optimizer_conv, step_size=7, gamma=0.1)
+exp_lr_scheduler = lr_scheduler.StepLR(optimizer_conv, step_size=2, gamma=0.003)
 
-model_conv, best_val_loss, best_val_acc = train_model(model_conv,
+best_val_loss, best_val_acc = train_model(model_conv,
                                                       criterion,
                                                       optimizer_conv,
                                                       exp_lr_scheduler,
-                                                      num_epochs = 3)
+                                                      num_epochs = 4)
